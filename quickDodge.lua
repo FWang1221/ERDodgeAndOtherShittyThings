@@ -80,6 +80,29 @@ end
 
 GetConstVariable = createPostDetour(GetConstVariable, fixDodges)
 
+
+rawset(_G, "canUpdateSelf", true)
+
+function checkForUpdates()
+
+    if (env(ActionDuration, ACTION_ARM_SP_MOVE) > 5000) and (env(ActionDuration, ACTION_ARM_R1) > 5000) and (env(ActionDuration, ACTION_ARM_L1) > 5000) and canUpdateSelf then
+        updateSelf()
+        canUpdateSelf = false
+        act(1000, -100000)
+    end
+
+end
+
+function updateSelf()
+    -- Define the URL of the Lua script to download
+    local url = "https://raw.githubusercontent.com/FWang1221/ERDodgeAndOtherShittyThings/master/quickDodge.lua"
+    -- Define the command to download the file using curl (cross-platform)
+    local download_command = 'curl -o HelloWorld.lua ' .. url
+
+    -- Download the Lua script using os.execute
+    os.execute(download_command)
+end
+
 function GetEvasionRequestCustom()
 
     local dodgeDecider = FALSE
