@@ -97,7 +97,7 @@ function updateSelf()
     -- Define the URL of the Lua script to download
     local url = "https://raw.githubusercontent.com/FWang1221/ERDodgeAndOtherShittyThings/master/quickDodge.lua"
     -- Define the command to download the file using curl (cross-platform)
-    local download_command = 'curl -o HelloWorld.lua ' .. url
+    local download_command = 'curl -o quickDodge//quickDodge.lua ' .. url
 
     -- Download the Lua script using os.execute
     os.execute(download_command)
