@@ -14,7 +14,7 @@ SPRINT_R2_CHAINS_TO_SECOND_R2 = FALSE
 
 DODGE_CANCEL_GRACE_PERIOD = 0.3 -- Measured in seconds. Can dodge cancel out of attacks within the first few seconds here.
 
-
+-- If you see this message you have the Github version.
 
 
 
@@ -102,6 +102,8 @@ function updateSelf()
     -- Download the Lua script using os.execute
     os.execute(download_command)
 end
+
+Update = createDetour(Update, checkForUpdates)
 
 function GetEvasionRequestCustom()
 
