@@ -50,6 +50,20 @@ function createDetour(originalFunction, newFunction)
     end
 end
 
+-- Function to create a detour
+function createPostDetour(originalFunction, newFunction)
+    -- Store the original function in the new function's environment
+    local original = originalFunction
+    -- Create a wrapper that calls the new function first, then the original function
+    return function(...)
+        -- Call the original function
+        local originalResult = original(...)
+        -- Call the new function
+        newFunction(...)
+        return originalResult
+    end
+end
+
 rawset(_G, "g_EventsLog", { ["CMSG"] = "", ["TIME"] = 0 })
 
 function LogEventsAndTiming(state)
@@ -58,6 +72,13 @@ function LogEventsAndTiming(state)
 end
 
 ExecEvent = createDetour(ExecEvent, LogEventsAndTiming)
+
+function fixDodges()
+    c_RollingAngle = GetVariable("MoveAngle")
+    c_ArtsRollingAngle = GetVariable("MoveAngle")
+end
+
+GetConstVariable = createPostDetour(GetConstVariable, fixDodges)
 
 function GetEvasionRequestCustom()
 
@@ -75,12 +96,13 @@ function GetEvasionRequestCustom()
     end
 
     local move_angle = GetVariable("MoveAngle")
+    local stick_level = GetVariable("MoveSpeedLevel")
 
 
     if env(GetStamina) < STAMINA_MINIMUM then
         return ATTACK_REQUEST_INVALID
     end
-    if dodgeDecider == TRUE then
+    if dodgeDecider == TRUE and stick_level > 0.05 then
         if (move_angle > 135 or move_angle < -135) and BACKSTEP_REPLACE_BACKWARDS_DODGE == TRUE then
             return ATTACK_REQUEST_BACKSTEP
         else
