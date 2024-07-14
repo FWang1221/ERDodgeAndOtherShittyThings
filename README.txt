@@ -6,6 +6,10 @@ quickDodge.lua should also be in the same directory, so C:\Program Files (x86)\S
 
 Settings can be changed in quickDodge.lua, just set them to TRUE or FALSE.
 
+How to update the Mod (for v1.01 or higher):
+
+ONLY FOR WINDOWS 10 AND ABOVE: Press L1 (right click) and R1 (left click) and Dodge and hold it for 15 seconds. After, a black screen appears and you die. You can only update 60 times an hour. 
+
 How to Merge:
 
 Take your player HKS of another overhaul or whatever and put this:
