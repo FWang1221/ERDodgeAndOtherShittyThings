@@ -13,8 +13,6 @@ SPRINT_R2_CHAINS_TO_SECOND_R2 = FALSE
 
 DODGE_CANCEL_GRACE_PERIOD = 0.3 -- Measured in seconds. Can dodge cancel out of attacks within the first few seconds here.
 
-CUSTOM_DODGE_CHAIN_TIMING = -1 -- Measured in seconds. If you want to chain a dodge into another dodge, you can set the timing here. -1 means it's disabled.
-
 CUSTOM_WEIGHT_OVERRIDE = -1 -- -1 for inactive, 1 for Light, 2 for Medium, 3 for Heavy, 4 for Overweight
 
 -- If you see this message you have the Github version.
@@ -531,8 +529,6 @@ BACKSTEP_R1_CHAINS_TO_SECOND_R2 = FALSE
 SPRINT_R2_CHAINS_TO_SECOND_R2 = FALSE
 
 DODGE_CANCEL_GRACE_PERIOD = 0.3 -- Measured in seconds. Can dodge cancel out of attacks within the first few seconds here.
-
-CUSTOM_DODGE_CHAIN_TIMING = -1 -- Measured in seconds. If you want to chain a dodge into another dodge, you can set the timing here. -1 means it's disabled.
 
 CUSTOM_WEIGHT_OVERRIDE = -1 -- -1 for inactive, 1 for Light, 2 for Medium, 3 for Heavy, 4 for Overweight
 ]])
