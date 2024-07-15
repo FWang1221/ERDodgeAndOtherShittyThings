@@ -1,6 +1,5 @@
 -- This file should be in your Game folder (usually C:\Program Files (x86)\Steam\steamapps\common\ELDEN RING\Game) + quickDodge. This file path should be C:\Program Files (x86)\Steam\steamapps\common\ELDEN RING\Game\quickDodge\quickDodge.lua
 
-DODGE_INSTANTLY = TRUE -- Dodge when you press the dodge button, not when you release it.
 BACKSTEP_REPLACE_BACKWARDS_DODGE = FALSE -- When dodging backwards, backstep instead.
 SPRINTING_R2_ON_BACKSTEP_R2 = TRUE -- When pressing R2 from a backstep, execute the sprinting R2 instead of standing R2.
 INSTANT_SPRINTING_FROM_DODGE = TRUE -- If you hold the dodge button from a dodge, you exit it in a sprint.
@@ -14,6 +13,10 @@ SPRINT_R2_CHAINS_TO_SECOND_R2 = FALSE
 
 DODGE_CANCEL_GRACE_PERIOD = 0.3 -- Measured in seconds. Can dodge cancel out of attacks within the first few seconds here.
 
+CUSTOM_DODGE_CHAIN_TIMING = -1 -- Measured in seconds. If you want to chain a dodge into another dodge, you can set the timing here. -1 means it's disabled.
+
+CUSTOM_WEIGHT_OVERRIDE = -1 -- -1 for inactive, 1 for Light, 2 for Medium, 3 for Heavy, 4 for Overweight
+
 -- If you see this message you have the Github version.
 
 
@@ -26,14 +29,35 @@ DODGE_CANCEL_GRACE_PERIOD = 0.3 -- Measured in seconds. Can dodge cancel out of 
 
 
 
+-- Table to hold the backup functions
+rawset(_G, "backupEnv", {})
+
 -- Function to create a replacement
-function createReplacement(originalFunction, newFunction)
-    -- Store the original function in the new function's environment
-    local original = originalFunction
-    -- Create a wrapper that calls the new function first, then the original function
+function createReplacement(functionName, originalFunction, newFunction)
+    -- Check if the function already exists in the backup environment using rawget
+    if rawget(backupEnv, functionName) == nil then
+        -- Store the original function in the backup environment
+        backupEnv[functionName] = originalFunction
+    end
+    
+    -- Create a wrapper that calls the new function
     return function(...)
         -- Call the new function
         return newFunction(...)
+    end
+end
+
+-- Function to restore the original function
+function restoreFunction(functionName)
+    -- Check if the backup environment has the original function using rawget
+    local originalFunction = rawget(backupEnv, functionName)
+    if originalFunction then
+        -- Return the original function
+        return originalFunction
+    elseif rawget(_G, functionName) then
+        return rawget(_G, functionName)
+    else
+        return nil
     end
 end
 
@@ -64,6 +88,47 @@ function createPostDetour(originalFunction, newFunction)
     end
 end
 
+function customWeightOverride()
+    if CUSTOM_WEIGHT_OVERRIDE == -1 then
+        return
+    end
+    if CUSTOM_WEIGHT_OVERRIDE == 1 then
+        SetVariable("MoveWeightIndex", MOVE_WEIGHT_LIGHT)
+        SetVariable("EvasionWeightIndex", EVASION_WEIGHT_INDEX_LIGHT)
+    elseif CUSTOM_WEIGHT_OVERRIDE == 2 then
+        SetVariable("MoveWeightIndex", MOVE_WEIGHT_NORMAL)
+        SetVariable("EvasionWeightIndex", EVASION_WEIGHT_INDEX_MEDIUM)
+    elseif CUSTOM_WEIGHT_OVERRIDE == 3 then
+        SetVariable("MoveWeightIndex", MOVE_WEIGHT_HEAVY)
+        SetVariable("EvasionWeightIndex", EVASION_WEIGHT_INDEX_HEAVY)
+    elseif CUSTOM_WEIGHT_OVERRIDE == 4 then
+        SetVariable("MoveWeightIndex", MOVE_WEIGHT_HEAVY)
+        SetVariable("EvasionWeightIndex", EVASION_WEIGHT_INDEX_OVERWEIGHT)
+    end
+end
+
+SetWeightIndex = createPostDetour(SetWeightIndex, customWeightOverride)
+
+rawset(_G, "buttonToggleThing", true)
+
+function rebindSprint()
+
+    if env(GetStamina) <= 0 then
+
+        buttonToggleThing = false
+    elseif env(ActionDuration, ACTION_ARM_L3) <= 0 then
+        buttonToggleThing = true
+    end
+
+    if env(ActionDuration, ACTION_ARM_L3) > 0 and env(GetStamina) > 0 and buttonToggleThing then
+        act(2002, 100220)
+
+        buttonToggleThing = true
+    end
+end
+
+Update = createPostDetour(Update, rebindSprint)
+
 rawset(_G, "g_EventsLog", { ["CMSG"] = "", ["TIME"] = 0 })
 
 function LogEventsAndTiming(state)
@@ -72,6 +137,39 @@ function LogEventsAndTiming(state)
 end
 
 ExecEvent = createDetour(ExecEvent, LogEventsAndTiming)
+
+ACTION_ARM_L3_BACK = ACTION_ARM_L3
+
+function ExecEvasionMonkeyPatchPre()
+
+    if c_HasActionRequest == FALSE then
+        return FALSE
+    end
+
+    if (env(ActionRequest, ACTION_ARM_L3) == TRUE or env(ActionDuration, ACTION_ARM_L3) > 0) and env(ActionRequest, ACTION_ARM_SP_MOVE) == TRUE and c_IsStealth == FALSE then
+        StealthTransitionIndexUpdate()
+        ExecEvent("W_Stealth_to_Stealth_Idle")
+        c_HasActionRequest = TRUE
+        return TRUE
+    elseif (env(ActionRequest, ACTION_ARM_L3) == TRUE or env(ActionDuration, ACTION_ARM_L3) > 0) and env(ActionRequest, ACTION_ARM_SP_MOVE) == TRUE and c_IsStealth == TRUE then
+        StealthTransitionIndexUpdate()
+        ExecEvent("W_Stealth_to_Idle")
+        c_HasActionRequest = TRUE
+        return TRUE
+    end
+
+    ACTION_ARM_L3 = 666
+
+end
+
+function ExecEvasionMonkeyPatchPost()
+
+    ACTION_ARM_L3 = ACTION_ARM_L3_BACK
+
+end
+
+ExecEvasion = createDetour(ExecEvasion, ExecEvasionMonkeyPatchPre)
+ExecEvasion = createPostDetour(ExecEvasion, ExecEvasionMonkeyPatchPost)
 
 function fixDodges()
     c_RollingAngle = GetVariable("MoveAngle")
@@ -85,7 +183,7 @@ rawset(_G, "canUpdateSelf", true)
 
 function checkForUpdates()
 
-    if (env(ActionDuration, ACTION_ARM_SP_MOVE) > 5000) and (env(ActionDuration, ACTION_ARM_R1) > 5000) and (env(ActionDuration, ACTION_ARM_L1) > 5000) and canUpdateSelf then
+    if (env(ActionDuration, ACTION_ARM_SP_MOVE) > 15000) and (env(ActionDuration, ACTION_ARM_R1) > 15000) and (env(ActionDuration, ACTION_ARM_L1) > 15000) and canUpdateSelf then
         updateSelf()
         canUpdateSelf = false
         act(1000, -100000)
@@ -97,7 +195,7 @@ function updateSelf()
     -- Define the URL of the Lua script to download
     local url = "https://raw.githubusercontent.com/FWang1221/ERDodgeAndOtherShittyThings/master/quickDodge.lua"
     -- Define the command to download the file using curl (cross-platform)
-    local download_command = 'curl -o quickDodge//quickDodge.lua ' .. url
+    local download_command = 'curl -o quickDodge/quickDodge.lua ' .. url
 
     -- Download the Lua script using os.execute
     os.execute(download_command)
@@ -109,11 +207,7 @@ function GetEvasionRequestCustom()
 
     local dodgeDecider = FALSE
 
-    if DODGE_INSTANTLY == TRUE then
-        dodgeDecider = env(ActionRequest, ACTION_ARM_SP_MOVE)
-    else
-        dodgeDecider = env(ActionRequest, ACTION_ARM_ROLLING)
-    end
+    dodgeDecider = env(ActionRequest, ACTION_ARM_SP_MOVE)
     if (os.clock() - g_EventsLog["TIME"] < DODGE_CANCEL_GRACE_PERIOD) and (string.find(g_EventsLog["CMSG"], "ttack")) then
         if env(ActionDuration, ACTION_ARM_SP_MOVE) > 0 then
             dodgeDecider = TRUE
@@ -124,10 +218,10 @@ function GetEvasionRequestCustom()
     local stick_level = GetVariable("MoveSpeedLevel")
 
 
-    if env(GetStamina) < STAMINA_MINIMUM then
+    if env(GetStamina) < STAMINA_MINIMUM or env(ActionDuration, ACTION_ARM_L3) > 0 then
         return ATTACK_REQUEST_INVALID
     end
-    if dodgeDecider == TRUE and stick_level > 0.05 then
+    if (dodgeDecider == TRUE and stick_level > 0.05) then
         if (move_angle > 135 or move_angle < -135) and BACKSTEP_REPLACE_BACKWARDS_DODGE == TRUE then
             return ATTACK_REQUEST_BACKSTEP
         else
@@ -323,31 +417,126 @@ function AttackBothHeavyDash_onUpdateCustom()
 end
 
 
+GetEvasionRequest = createReplacement("GetEvasionRequest", GetEvasionRequest, GetEvasionRequestCustom)
 
-GetEvasionRequest = createReplacement(GetEvasionRequest, GetEvasionRequestCustom)
-if SPRINTING_R2_ON_BACKSTEP_R2 == TRUE then
-    DefaultBackStep_onUpdate = createReplacement(DefaultBackStep_onUpdate, DefaultBackStep_onUpdateCustom)
+rawset(_G, "g_LastSettingsCheckTime", 0)
+
+function applySettings()
+
+    if SPRINTING_R2_ON_BACKSTEP_R2 == TRUE then
+        DefaultBackStep_onUpdate = createReplacement("DefaultBackStep_onUpdate", DefaultBackStep_onUpdate, DefaultBackStep_onUpdateCustom)
+    else
+        DefaultBackStep_onUpdate = restoreFunction("DefaultBackStep_onUpdate")
+    end
+
+    if INSTANT_SPRINTING_FROM_DODGE == TRUE or INSTANT_SPRINTING_FROM_DODGE == TRUE then
+        Rolling_onUpdate = createReplacement("Rolling_onUpdate", Rolling_onUpdate, Rolling_onUpdateCustom)
+    else
+        Rolling_onUpdate = restoreFunction("Rolling_onUpdate")
+    end
+
+    if FIRST_R1_CHAINS_TO_SECOND_R2 == TRUE then
+        AttackRightLight1_onUpdate = createReplacement("AttackRightLight1_onUpdate", AttackRightLight1_onUpdate, AttackRightLight1_onUpdateCustom)
+        AttackBothLight1_onUpdate = createReplacement("AttackBothLight1_onUpdate", AttackBothLight1_onUpdate, AttackBothLight1_onUpdateCustom)
+    else
+        AttackRightLight1_onUpdate = restoreFunction("AttackRightLight1_onUpdate")
+        AttackBothLight1_onUpdate = restoreFunction("AttackBothLight1_onUpdate")
+    end
+
+    if DODGE_R1_CHAINS_TO_SECOND_R2 == TRUE then
+        AttackRightLightStep_onUpdate = createReplacement("AttackRightLightStep_onUpdate", AttackRightLightStep_onUpdate, AttackRightLightStep_onUpdateCustom)
+        AttackBothLightStep_onUpdate = createReplacement("AttackBothLightStep_onUpdate", AttackBothLightStep_onUpdate, AttackBothLightStep_onUpdateCustom)
+    else
+        AttackRightLightStep_onUpdate = restoreFunction("AttackRightLightStep_onUpdate")
+        AttackBothLightStep_onUpdate = restoreFunction("AttackBothLightStep_onUpdate")
+    end
+
+    if SPRINT_R1_CHAINS_TO_SECOND_R2 == TRUE then
+        AttackRightLightDash_onUpdate = createReplacement("AttackRightLightDash_onUpdate", AttackRightLightDash_onUpdate, AttackRightLightDash_onUpdateCustom)
+        AttackBothDash_onUpdate = createReplacement("AttackBothDash_onUpdate", AttackBothDash_onUpdate, AttackBothDash_onUpdateCustom)
+    else
+        AttackRightLightDash_onUpdate = restoreFunction("AttackRightLightDash_onUpdate")
+        AttackBothDash_onUpdate = restoreFunction("AttackBothDash_onUpdate")
+    end
+
+    if BACKSTEP_R1_CHAINS_TO_SECOND_R2 == TRUE then
+        AttackRightBackstep_onUpdate = createReplacement("AttackRightBackstep_onUpdate", AttackRightBackstep_onUpdate, AttackRightBackstep_onUpdateCustom)
+        AttackBothBackstep_onUpdate = createReplacement("AttackBothBackstep_onUpdate", AttackBothBackstep_onUpdate, AttackBothBackstep_onUpdateCustom)
+    else
+        AttackRightBackstep_onUpdate = restoreFunction("AttackRightBackstep_onUpdate")
+        AttackBothBackstep_onUpdate = restoreFunction("AttackBothBackstep_onUpdate")
+    end
+
+    if SPRINT_R2_CHAINS_TO_SECOND_R2 == TRUE or true then
+        AttackRightHeavyDash_onUpdate = createReplacement("AttackRightHeavyDash_onUpdate", AttackRightHeavyDash_onUpdate, AttackRightHeavyDash_onUpdateCustom)
+        AttackBothHeavyDash_onUpdate = createReplacement("AttackBothHeavyDash_onUpdate", AttackBothHeavyDash_onUpdate, AttackBothHeavyDash_onUpdateCustom)
+    else
+        AttackRightHeavyDash_onUpdate = restoreFunction("AttackRightHeavyDash_onUpdate")
+        AttackBothHeavyDash_onUpdate = restoreFunction("AttackBothHeavyDash_onUpdate")
+    end
 end
-if INSTANT_SPRINTING_FROM_DODGE == TRUE or INSTANT_SPRINTING_FROM_DODGE == TRUE then
-    Rolling_onUpdate = createReplacement(Rolling_onUpdate, Rolling_onUpdateCustom)
+
+function checkSettings()
+
+    if os.clock() - g_LastSettingsCheckTime > 1 then
+        g_LastSettingsCheckTime = os.clock()
+    else
+        return
+    end
+
+    local filePath = "quickDodge/quickDodgeSettings.txt"
+    -- Function to check if a file exists
+    local function fileExists(file)
+        local f = io.open(file, "r")
+        if f then
+            io.close(f)
+            return true
+        else
+            return false
+        end
+    end
+
+    -- Function to run the file
+    local function runFile(file)
+        pcall(loadfile(file))
+    end
+
+    -- Function to create the file with specified content
+    local function createFile(file, content)
+        local f = io.open(file, "w")
+        f:write(content)
+        io.close(f)
+    end
+
+    -- Main logic
+    if fileExists(filePath) then
+        runFile(filePath)
+        success, error = pcall(applySettings())
+        if not success then
+            createFile("quickDodge/errors.txt", error)
+        end
+    else
+        createFile(filePath,
+[[    
+
+BACKSTEP_REPLACE_BACKWARDS_DODGE = FALSE -- When dodging backwards, backstep instead.
+SPRINTING_R2_ON_BACKSTEP_R2 = TRUE -- When pressing R2 from a backstep, execute the sprinting R2 instead of standing R2.
+INSTANT_SPRINTING_FROM_DODGE = TRUE -- If you hold the dodge button from a dodge, you exit it in a sprint.
+SPRINTING_ATTACKS_WHILE_HOLDING_DODGE = TRUE -- If you hold the dodge button from a dodge, instead of queueing a dodge attack, you queue a sprinting attack
+FAST_DODGE_R2 = TRUE -- When exiting from a dodge, the R2 attack is noticeably faster
+FIRST_R1_CHAINS_TO_SECOND_R2 = FALSE -- Your standing R1 chains to your second standing R2 instead of the first standing R2.
+DODGE_R1_CHAINS_TO_SECOND_R2 = FALSE
+SPRINT_R1_CHAINS_TO_SECOND_R2 = FALSE
+BACKSTEP_R1_CHAINS_TO_SECOND_R2 = FALSE
+SPRINT_R2_CHAINS_TO_SECOND_R2 = FALSE
+
+DODGE_CANCEL_GRACE_PERIOD = 0.3 -- Measured in seconds. Can dodge cancel out of attacks within the first few seconds here.
+
+CUSTOM_DODGE_CHAIN_TIMING = -1 -- Measured in seconds. If you want to chain a dodge into another dodge, you can set the timing here. -1 means it's disabled.
+
+CUSTOM_WEIGHT_OVERRIDE = -1 -- -1 for inactive, 1 for Light, 2 for Medium, 3 for Heavy, 4 for Overweight
+]])
+    end
 end
-if FIRST_R1_CHAINS_TO_SECOND_R2 == TRUE then
-    AttackRightLight1_onUpdate = createReplacement(AttackRightLight1_onUpdate, AttackRightLight1_onUpdateCustom)
-    AttackBothLight1_onUpdate = createReplacement(AttackBothLight1_onUpdate, AttackBothLight1_onUpdateCustom)
-end
-if DODGE_R1_CHAINS_TO_SECOND_R2 == TRUE then
-    AttackRightLightStep_onUpdate = createReplacement(AttackRightLightStep_onUpdate, AttackRightLightStep_onUpdateCustom)
-    AttackBothLightStep_onUpdate = createReplacement(AttackBothLightStep_onUpdate, AttackBothLightStep_onUpdateCustom)
-end
-if SPRINT_R1_CHAINS_TO_SECOND_R2 == TRUE then
-    AttackRightLightDash_onUpdate = createReplacement(AttackRightLightDash_onUpdate, AttackRightLightDash_onUpdateCustom)
-    AttackBothDash_onUpdate = createReplacement(AttackBothDash_onUpdate, AttackBothDash_onUpdateCustom)
-end
-if BACKSTEP_R1_CHAINS_TO_SECOND_R2 == TRUE then
-    AttackRightBackstep_onUpdate = createReplacement(AttackRightBackstep_onUpdate, AttackRightBackstep_onUpdateCustom)
-    AttackBothBackstep_onUpdate = createReplacement(AttackBothBackstep_onUpdate, AttackBothBackstep_onUpdateCustom)
-end
-if SPRINT_R2_CHAINS_TO_SECOND_R2 == TRUE then
-    AttackRightHeavyDash_onUpdate = createReplacement(AttackRightHeavyDash_onUpdate, AttackRightHeavyDash_onUpdateCustom)
-    AttackBothHeavyDash_onUpdate = createReplacement(AttackBothHeavyDash_onUpdate, AttackBothHeavyDash_onUpdateCustom)
-end
+
+Update = createDetour(Update, checkSettings)
